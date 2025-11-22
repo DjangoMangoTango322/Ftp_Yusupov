@@ -8,7 +8,7 @@ namespace Common
 {
     public class Programm 
     {
-        public static List<User> Users = new List<User>();
+        public static List<User> Users = new List<User>(); 
         public static IPAddress IpAdress;
         public static int Port;
 
