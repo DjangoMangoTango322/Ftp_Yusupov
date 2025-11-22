@@ -15,7 +15,7 @@ namespace Common
         public void Main(string[] args) 
         {
             Users.Add(new User("yusupov", "Asdfg123", @"C:\Downloads"));
-            Console.Write("Введите IP адрес сервера: ");
+            Console.Write("Введите IP адрес сервера: "); 
             string sIpAdress = Console.ReadLine();
             Console.Write("Введите порт: ");
             string sPort = Console.ReadLine();
