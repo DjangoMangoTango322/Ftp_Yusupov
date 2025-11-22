@@ -6,7 +6,7 @@ using Server;
 
 namespace Common
 {
-    public class Programm
+    public class Programm 
     {
         public static List<User> Users = new List<User>();
         public static IPAddress IpAdress;
