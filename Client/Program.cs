@@ -144,7 +144,7 @@ namespace Client
             Console.ForegroundColor= ConsoleColor.Red;
                 Console.WriteLine("Что-то случилось: " + exp.Message);
             }
-        }
+        } 
         static void Main(string[] args)
         {
             Console.WriteLine("Ввдеите IP адрес сервера: ");
