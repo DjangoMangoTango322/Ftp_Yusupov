@@ -13,7 +13,7 @@ namespace Common
         public static int Port;
 
         public void Main(string[] args) 
-        {
+        { 
             Users.Add(new User("yusupov", "Asdfg123", @"C:\Downloads"));
             Console.Write("Введите IP адрес сервера: "); 
             string sIpAdress = Console.ReadLine();
