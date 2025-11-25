@@ -8,7 +8,7 @@ using Newtonsoft.Json;
 namespace Client
 {
 
-    class Program
+    public class Program
     {
         public static IPAddress IpAdress;
         public static int Port;
