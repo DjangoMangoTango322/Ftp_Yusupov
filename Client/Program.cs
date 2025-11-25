@@ -40,7 +40,7 @@ namespace Client
                     if (DataMessage.Length == 1)
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("Использование: get [NmaeFile]\nПример: get Test.txt");
+                        Console.WriteLine("Использование: get [NameFile]\nПример: get Test.txt");
                         BCommand = false;
                     }
                     else
@@ -52,7 +52,7 @@ namespace Client
                     if (DataMessage.Length == 1)
                     {
                         Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("Использование: set [NmaeFile]\nПример: get Test.txt");
+                        Console.WriteLine("Использование: set [NameFile]\nПример: get Test.txt");
                         BCommand = false;
                     }
                     else 
@@ -128,7 +128,7 @@ namespace Client
                                 else
                                     getFile += " " + DataMessage[i];
                             byte[] byteFile = JsonConvert.DeserializeObject<byte[]>(viewModelMessage.Data);
-                            File.WriteAllBytes(getFile, byteFile);
+                            File.WriteAllBytes(Directory.GetCurrentDirectory() + getFile, byteFile);
                         }
                     }
                 }

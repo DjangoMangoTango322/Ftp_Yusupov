@@ -1,0 +1,587 @@
+﻿PROJECT EXPORT - 11/25/2025 15:44:04
+Project Path: C:\Users\student-a502.PERMAVIAT\Desktop\asdd\Ftp_Yusupov
+Total Files: 12
+
+================================================================================
+FILE: asd.txt
+================================================================================
+asdasd
+asd
+asd
+asd
+
+
+
+================================================================================
+FILE: Ftp_Yusupov.sln
+================================================================================
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35527.113
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Server", "Server\Server.csproj", "{68E1DBD4-91F5-4CF9-8240-898988844D9E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common", "Common\Common.csproj", "{1F60EE89-8251-4E9F-97A9-FAB8F2C770BB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Client", "Client\Client.csproj", "{C285B4FA-75AC-4E34-8CC9-2A1F5D9F112D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{68E1DBD4-91F5-4CF9-8240-898988844D9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{68E1DBD4-91F5-4CF9-8240-898988844D9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{68E1DBD4-91F5-4CF9-8240-898988844D9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{68E1DBD4-91F5-4CF9-8240-898988844D9E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1F60EE89-8251-4E9F-97A9-FAB8F2C770BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1F60EE89-8251-4E9F-97A9-FAB8F2C770BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1F60EE89-8251-4E9F-97A9-FAB8F2C770BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1F60EE89-8251-4E9F-97A9-FAB8F2C770BB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C285B4FA-75AC-4E34-8CC9-2A1F5D9F112D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C285B4FA-75AC-4E34-8CC9-2A1F5D9F112D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C285B4FA-75AC-4E34-8CC9-2A1F5D9F112D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C285B4FA-75AC-4E34-8CC9-2A1F5D9F112D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
+
+
+
+================================================================================
+FILE: Client\Client.csproj
+================================================================================
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+
+</Project>
+
+
+
+================================================================================
+FILE: Client\Program.cs
+================================================================================
+using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using Common;
+using Newtonsoft.Json;
+
+namespace Client
+{
+
+    public class Program
+    {
+        public static IPAddress IpAdress;
+        public static int Port;
+        public static int Id = -1;
+
+        public static bool CheckCommand(string message)
+        {
+            bool BCommand = false;
+            string[] DataMessage = message.Split(new string[1] { " " }, StringSplitOptions.None);
+
+            if (DataMessage.Length > 0)
+            {
+                string Command = DataMessage[0];
+                if (Command == "connect")
+                {
+                    if (DataMessage.Length != 3)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("Использование: connect [login] [password]\nПример: connect User1 P@ssw0rd");
+                        BCommand = false;
+                    }
+                    else
+                        BCommand = true;
+                }
+                else if (Command == "cd")
+                    BCommand = true;
+                else if (Command == "get")
+                {
+                    if (DataMessage.Length == 1)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("Использование: get [NameFile]\nПример: get Test.txt");
+                        BCommand = false;
+                    }
+                    else
+                        BCommand = true;
+
+                }
+                else if (Command == "set")
+                {
+                    if (DataMessage.Length == 1)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("Использование: set [NameFile]\nПример: get Test.txt");
+                        BCommand = false;
+                    }
+                    else 
+                        BCommand = true;
+                }
+            }
+            return BCommand;
+        }
+        public static void ConnectServer()
+        {
+            try
+            {
+                IPEndPoint endPoint = new IPEndPoint(IpAdress, Port);
+                Socket socket = new Socket(
+                    AddressFamily.InterNetwork,
+                    SocketType.Stream,
+                    ProtocolType.Tcp);
+                socket.Connect(endPoint);
+                if (socket.Connected)
+                {
+                    Console.ForegroundColor = ConsoleColor.White;
+                    string message = Console.ReadLine();
+                    if (CheckCommand(message))
+                    {
+                        ViewModelSend viewModelSend = new ViewModelSend(message, Id);
+                        if (message.Split(new string[1] { " " }, StringSplitOptions.None)[0] == "set")
+                        {
+                            string[] DataMessage = message.Split(new string[1] { " " }, StringSplitOptions.None);
+                            string NameFile = "";
+                            for (int i = 1; i < DataMessage.Length; i++)
+                                if (NameFile == "")
+                                    NameFile += DataMessage[i];
+                                else
+                                    NameFile += " " + DataMessage[i];
+
+                            if (File.Exists(NameFile))
+                            {
+                                FileInfo FileInfo = new FileInfo(NameFile);
+                                FileInfoFTP NewFileInfo = new FileInfoFTP(File.ReadAllBytes(NameFile), FileInfo.Name);
+                                viewModelSend = new ViewModelSend(JsonConvert.SerializeObject(NewFileInfo), Id);
+                            }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine("Указанный файл не существует");
+                            }
+                        }
+                        byte[] messageByte = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(viewModelSend));
+                        int BytesSend = socket.Send(messageByte);
+                        byte[] bytes = new byte[10485760];
+                        int BytesRec = socket.Receive(bytes);
+                        string messageServer = Encoding.UTF8.GetString(bytes, 0, BytesRec);
+                        ViewModelMessage viewModelMessage = JsonConvert.DeserializeObject<ViewModelMessage>(messageServer);
+
+                        if (viewModelMessage.Command == "autorization")
+                            Id = int.Parse(viewModelMessage.Data);
+                        else if (viewModelMessage.Command == "message")
+                            Console.WriteLine(viewModelMessage.Data);
+                        else if (viewModelMessage.Command == "cd")
+                        {
+                            List<string> FoldersFiles = new List<string>();
+                            FoldersFiles = JsonConvert.DeserializeObject<List<string>>(viewModelMessage.Data);
+                            foreach (string Name in FoldersFiles)
+                                Console.WriteLine(Name);
+                        }
+                        else if (viewModelMessage.Command == "file")
+                        {
+                            string[] DataMessage = viewModelSend.Message.Split(new string[1] { " " }, StringSplitOptions.None);
+                            string getFile = "";
+                            for (int i = 1; i < DataMessage.Length; i++)
+                                if (getFile == "")
+                                    getFile = DataMessage[i];
+                                else
+                                    getFile += " " + DataMessage[i];
+                            byte[] byteFile = JsonConvert.DeserializeObject<byte[]>(viewModelMessage.Data);
+                            File.WriteAllBytes(Directory.GetCurrentDirectory() + getFile, byteFile);
+                        }
+                    }
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Подключение не удалосью");
+                }
+                socket.Close();
+            }
+            catch (Exception exp) 
+            {
+            Console.ForegroundColor= ConsoleColor.Red;
+                Console.WriteLine("Что-то случилось: " + exp.Message);
+            }
+        } 
+        static void Main(string[] args)
+        {
+            Console.WriteLine("Ввдеите IP адрес сервера: ");
+            string sIpAdress = Console.ReadLine();
+            Console.WriteLine("Введите порт: ");
+            string sPort = Console.ReadLine();
+            if (int.TryParse(sPort, out Port) && IPAddress.TryParse(sIpAdress, out IpAdress))
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("Данные успешно введены. Подключаюсь к сервер.");
+                while (true)
+                {
+                    ConnectServer();
+                }
+            }
+        }
+    }
+}
+
+
+
+
+================================================================================
+FILE: Common\Common.csproj
+================================================================================
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
+
+
+
+================================================================================
+FILE: Common\FileInfoFTP.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Common
+{
+    public class FileInfoFTP
+    {
+        public byte[] Data { get; set; }
+        public string Name { get; set; }
+        public FileInfoFTP(byte[] data, string name)
+        {
+            Data = data;
+            Name = name;
+        }
+    }
+}
+
+
+
+================================================================================
+FILE: Common\ViewModelMessage.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Common
+{
+    public class ViewModelMessage
+    {
+        public string Command {  get; set; }
+        public string Data { get; set; }
+        public ViewModelMessage(string command, string data)
+        {
+            this.Command = command;
+            this.Data = data;
+        }
+    }
+}
+
+
+
+================================================================================
+FILE: Common\ViewModelSend.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Common
+{
+    public class ViewModelSend
+    {
+        public string Message { get; set; }
+        public int Id { get; set; }
+        public ViewModelSend(string message, int id) {
+            this.Message = message;
+            this.Id = id;   
+        }
+    }
+}
+
+
+
+================================================================================
+FILE: Server\Program.cs
+================================================================================
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using Newtonsoft.Json;
+using Server;
+
+namespace Common
+{
+    public class Programm 
+    {
+        public static List<User> Users = new List<User>(); 
+        public static IPAddress IpAdress;
+        public static int Port;
+
+        public static void Main(string[] args) 
+        { 
+            Users.Add(new User("yusupov", "Asdfg123", @"C:\Users\student-a502.PERMAVIAT\Desktop\asdd\Ftp_Yusupov"));
+            Console.Write("Введите IP адрес сервера: "); 
+            string sIpAdress = Console.ReadLine();
+            Console.Write("Введите порт: ");
+            string sPort = Console.ReadLine();
+            if(int.TryParse(sPort, out Port) && IPAddress.TryParse(sIpAdress, out IpAdress))
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("Данные успешно введены. Запускаю сервер. ");
+                StartServer();
+            }
+            Console.Read();
+        }
+        public static bool AutorizationUser(string login, string password)
+        {
+            User user = null;
+            user = Users.Find(x => x.login == login && x.password == password);
+            return user != null;
+        }
+        public static List<string> GetDirectory(string src)
+        {
+            List<string> FoldersFiles = new List<string>();
+            if (Directory.Exists(src))
+            {
+                string[] dirs = Directory.GetDirectories(src);
+                foreach (string dir in dirs)
+                {
+                    string NameDirectory = dir.Replace(src, "");
+                    FoldersFiles.Add(NameDirectory + "/");
+                }
+                string[] files = Directory.GetFiles(src);
+                foreach (string file in files)
+                {
+                    string NameFile = file.Replace(src, "");
+                    FoldersFiles.Add(NameFile);
+                }
+            }
+            return FoldersFiles;
+        }
+        public static void StartServer()
+        {
+            IPEndPoint endPoint = new IPEndPoint(IpAdress, Port);
+            Socket SListener = new Socket(
+                AddressFamily.InterNetwork,
+                SocketType.Stream,
+                ProtocolType.Tcp);
+            SListener.Bind(endPoint);
+            SListener.Listen(10);
+            Console.WriteLine("Сервер запущен.");
+            while (true)
+            {
+                try
+                {
+                    Socket Handler = SListener.Accept();
+                    string Data = null;
+                    byte[] Bytes = new byte[10485760];
+                    int BytesRec = Handler.Receive(Bytes);
+                    Data += Encoding.UTF8.GetString(Bytes, 0, BytesRec);
+                    Console.Write("Сообщение от пользователя: " + Data + "\n");
+                    string Reply = "";
+                    ViewModelSend ViewModelSend = JsonConvert.DeserializeObject<ViewModelSend>(Data);
+                    if (ViewModelSend != null)
+                    {
+                        ViewModelMessage viewModelMessage;
+                        string[] DataCommand= ViewModelSend.Message.Split(new string[1] { " " }, StringSplitOptions.None);
+                        if (DataCommand[0] == "connect")
+                        {
+                            string[] DataMessage = ViewModelSend.Message.Split(new string[1] { " " }, StringSplitOptions.None);
+                            if (AutorizationUser(DataMessage[1], DataMessage[2]))
+                            {
+                                int IdUser = Users.FindIndex(x => x.login == DataMessage[1] && x.password == DataMessage[2]);
+                                viewModelMessage = new ViewModelMessage("autorization", IdUser.ToString());
+                            }
+                            else {
+                                viewModelMessage = new ViewModelMessage("message", "Не правильный логин и пароль пользователя.");
+                            }
+                            Reply = JsonConvert.SerializeObject(viewModelMessage);
+                            byte[] message = Encoding.UTF8.GetBytes(Reply);
+                            Handler.Send(message);
+                        }
+                        else if (DataCommand[0] == "cd")
+                        {
+                            if (ViewModelSend.Id != -1)
+                            {
+                                string[] DataMessage = ViewModelSend.Message.Split(new string[1] { " " }, StringSplitOptions.None);
+                                List<string> FolderFiles = new List<string>();
+                                if (DataMessage.Length == 1)
+                                {
+                                    Users[ViewModelSend.Id].temp_src = Users[ViewModelSend.Id].src;
+                                    FolderFiles = GetDirectory(Users[ViewModelSend.Id].src);
+                                }
+                                else
+                                {
+                                    string cdFolder = "";
+                                    for (int i = 0; i < DataMessage.Length; i++)
+                                        if (cdFolder == "")
+                                            cdFolder += DataMessage[i];
+                                        else
+                                            cdFolder += " " + DataMessage[i];
+                                    Users[ViewModelSend.Id].temp_src = Users[ViewModelSend.Id].temp_src + cdFolder;
+                                    FolderFiles = GetDirectory(Users[ViewModelSend.Id].temp_src);
+                                }
+                                if (FolderFiles.Count == 0)
+                                    viewModelMessage = new ViewModelMessage("message", "Директория пуста или не существует.");
+                                else
+                                    viewModelMessage = new ViewModelMessage("cd", JsonConvert.SerializeObject(FolderFiles));
+                            }
+                            else
+                                viewModelMessage = new ViewModelMessage("message", "Необходимо авторизоваться");
+                            Reply = JsonConvert.SerializeObject(viewModelMessage);
+                            byte[] message = Encoding.UTF8.GetBytes(Reply);
+                            Handler.Send(message);
+                        }
+                        else if (DataCommand[0] == "get")
+                        {
+                            if (ViewModelSend.Id != -1)
+                            {
+                                string[] DataMessage = ViewModelSend.Message.Split(new string[1] { " " }, StringSplitOptions.None);
+                                string getFile = "";
+                                for (int i = 1; i < DataMessage.Length; i++) // ← с 1, не с 0
+                                {
+                                    if (getFile == "")
+                                        getFile = DataMessage[i];
+                                    else
+                                        getFile = Path.Combine(getFile, DataMessage[i]); // или просто склеить с пробелом, если поддерживается
+                                }
+                                byte[] byteFile = File.ReadAllBytes(Users[ViewModelSend.Id].temp_src + getFile);
+                                viewModelMessage = new ViewModelMessage("file", JsonConvert.SerializeObject(byteFile));
+                            }
+                            else
+                                viewModelMessage = new ViewModelMessage("message", "Необходимо авторизоваться");
+                            Reply = JsonConvert.SerializeObject(viewModelMessage);
+                            byte[] message = Encoding.UTF8.GetBytes(Reply);
+                            Handler.Send(message);
+                        }
+                        else
+                        {
+                            if (ViewModelSend.Id != -1)
+                            {
+                                FileInfoFTP SendFileInfo = JsonConvert.DeserializeObject<FileInfoFTP>(ViewModelSend.Message);
+                                File.WriteAllBytes(Users[ViewModelSend.Id].temp_src + @"\" + SendFileInfo.Name, SendFileInfo.Data);
+                                viewModelMessage = new ViewModelMessage("message", "Файл загружен");
+                            }
+                            else
+                                viewModelMessage = new ViewModelMessage("message", "Необходимо авторизоваться");
+                            Reply = JsonConvert.SerializeObject(viewModelMessage);
+                            byte[] message = Encoding.UTF8.GetBytes(Reply);
+                            Handler.Send(message);
+                        }
+                    }
+                }
+                catch (Exception exp)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Что-то случилось: " + exp.Message);
+                }
+            }
+        }
+
+    }
+}
+
+
+================================================================================
+FILE: Server\Server.csproj
+================================================================================
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DockerDefaultTargetOS>Windows</DockerDefaultTargetOS>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+
+</Project>
+
+
+
+================================================================================
+FILE: Server\User.cs
+================================================================================
+
+
+namespace Server
+{
+    public class User
+    {
+        public string login { get; set; } 
+        public string password { get; set; }
+        public string src { get; set; }
+        public string temp_src { get; set; }
+        public User(string login, string password, string src)
+        {
+            this.login = login;
+            this.password = password;
+            this.src = src;
+            temp_src = src;
+        }
+    }
+}
+
+
+
+================================================================================
+FILE: Server\Properties\launchSettings.json
+================================================================================
+{
+  "profiles": {
+    "Server": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
+
+
