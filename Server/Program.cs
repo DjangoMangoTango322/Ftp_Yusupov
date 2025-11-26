@@ -1,248 +1,386 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Common;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using Server;
-using Server.Models;
+using Server.Models; 
 
-namespace Common
+namespace Server 
 {
-    public class Programm
+    public class Program 
     {
-        
-       public static IPAddress IpAdress;
-       public static int Port;
+        public static IPAddress IpAdress;
+        public static int Port;
 
-       public static void Main(string[] args)
-       {
-           // Создаём БД и тестового пользователя (если его нет)
-           using (var db = new AppDbContext())
-           {
-               db.Database.Migrate(); // создаёт базу ftp_server и таблицу Users
+        public static void Main(string[] args)
+        {
+            // Создаём БД и тестового пользователя
+            using (var db = new AppDbContext())
+            {
+                db.Database.Migrate();
 
-               if (!db.Users.Any(u => u.Login == "yusupov"))
-               {
-                   db.Users.Add(new User
-                   {
-                       Login = "yusupov",
-                       Password = "Asdfg123", // пароль хранится открыто
-                       RootDirectory = @"C:\Users\student-a502.PERMAVIAT\Desktop\asdd\Ftp_Yusupov",
-                       CurrentDirectory = @"C:\Users\student-a502.PERMAVIAT\Desktop\asdd\Ftp_Yusupov\"
-                   });
-                   db.SaveChanges();
-                   Console.WriteLine("Создан пользователь: yusupov / Asdfg123");
-               }
-           }
+                if (!db.Users.Any(u => u.Login == "yusupov"))
+                {
+                    db.Users.Add(new User
+                    {
+                        Login = "yusupov",
+                        Password = "Asdfg123",
+                        RootDirectory = @"C:\Users\student-a502.PERMAVIAT\Desktop\asd\Ftp_Yusupov",
+                        CurrentDirectory = @"C:\Users\student-a502.PERMAVIAT\Desktop\asd\Ftp_Yusupov"
+                    });
+                    db.SaveChanges();
+                    Console.WriteLine("Создан пользователь: yusupov / Asdfg123");
+                }
+            }
 
-           Console.Write("IP сервера (по умолчанию 127.0.0.1): ");
-           string sIp = Console.ReadLine();
-           if (string.IsNullOrWhiteSpace(sIp)) sIp = "127.0.0.1";
+            Console.Write("IP сервера (по умолчанию 127.0.0.1): ");
+            string sIp = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(sIp)) sIp = "127.0.0.1";
 
-           Console.Write("Порт (по умолчанию 8080): ");
-           string sPort = Console.ReadLine();
-           if (string.IsNullOrWhiteSpace(sPort)) sPort = "8080";
+            Console.Write("Порт (по умолчанию 8080): ");
+            string sPort = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(sPort)) sPort = "8080";
 
-           if (IPAddress.TryParse(sIp, out IpAdress) && int.TryParse(sPort, out Port))
-           {
-               Console.ForegroundColor = ConsoleColor.Green;
-               Console.WriteLine($"Сервер запущен: {IpAdress}:{Port}");
-               Console.ResetColor();
-               StartServer();
-           }
-           else
-           {
-               Console.WriteLine("Ошибка ввода IP или порта!");
-           }
+            if (IPAddress.TryParse(sIp, out IpAdress) && int.TryParse(sPort, out Port))
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"Сервер запущен: {IpAdress}:{Port}");
+                Console.ResetColor();
+                StartServer();
+            }
+            else
+            {
+                Console.WriteLine("Ошибка ввода IP или порта!");
+            }
 
-           Console.ReadKey();
-       }
+            Console.WriteLine("Нажмите любую клавишу для выхода...");
+            Console.ReadKey();
+        }
 
-       public static void StartServer()
-       {
-           var endPoint = new IPEndPoint(IpAdress, Port);
-           var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        public static void StartServer()
+        {
+            var endPoint = new IPEndPoint(IpAdress, Port);
+            var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
-           try
-           {
-               listener.Bind(endPoint);
-               listener.Listen(10);
-               Console.WriteLine("Ожидание подключений...");
+            try
+            {
+                listener.Bind(endPoint);
+                listener.Listen(10);
+                Console.WriteLine("Ожидание подключений...");
 
-               while (true)
-               {
-                   Socket client = listener.Accept();
-                   _ = Task.Run(() => HandleClient(client));
-               }
-           }
-           catch (Exception ex)
-           {
-               Console.WriteLine("Ошибка сервера: " + ex.Message);
-           }
-       }
+                while (true)
+                {
+                    Socket client = listener.Accept();
+                    var clientEndPoint = client.RemoteEndPoint as IPEndPoint;
+                    _ = Task.Run(() => HandleClient(client, clientEndPoint));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Ошибка сервера: " + ex.Message);
+            }
+        }
 
-       private static void HandleClient(Socket handler)
-       {
-           try
-           {
-               byte[] buffer = new byte[10485760];
-               int bytesRec = handler.Receive(buffer);
-               string data = Encoding.UTF8.GetString(buffer, 0, bytesRec);
+        private static void HandleClient(Socket handler, IPEndPoint clientEndPoint)
+        {
+            string clientIp = clientEndPoint?.Address.ToString() ?? "unknown";
 
-               Console.WriteLine($"Запрос: {data}");
+            try
+            {
+                byte[] buffer = new byte[10 * 1024 * 1024];
+                int bytesRec = handler.Receive(buffer);
 
-               var request = JsonConvert.DeserializeObject<ViewModelSend>(data)!;
-               var response = ProcessCommand(request);
+                if (bytesRec == 0)
+                {
+                    Console.WriteLine($"Клиент {clientIp} отключился без данных.");
+                    return;
+                }
 
-               string json = JsonConvert.SerializeObject(response);
-               byte[] msg = Encoding.UTF8.GetBytes(json);
-               handler.Send(msg);
-           }
-           catch (Exception ex)
-           {
-               Console.WriteLine("Ошибка клиента: " + ex.Message);
-           }
-           finally
-           {
-               handler.Shutdown(SocketShutdown.Both);
-               handler.Close();
-           }
-       }
+                string receivedData = Encoding.UTF8.GetString(buffer, 0, bytesRec);
+                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запрос от {clientIp}: {receivedData}");
 
-       private static ViewModelMessage ProcessCommand(ViewModelSend request)
-       {
-           string[] parts = request.Message.Split(' ', 2);
-           string cmd = parts[0].ToLower();
-           string args = parts.Length > 1 ? parts[1] : "";
+                var request = JsonConvert.DeserializeObject<ViewModelSend>(receivedData);
+                if (request == null)
+                {
+                    SendResponse(handler, new ViewModelMessage("message", "Неверный формат данных"));
+                    return;
+                }
 
-           using var db = new AppDbContext();
+                var response = ProcessCommand(request, clientIp);
+                string jsonResponse = JsonConvert.SerializeObject(response);
+                byte[] msg = Encoding.UTF8.GetBytes(jsonResponse);
+                handler.Send(msg);
 
-           // Только connect разрешён без авторизации
-           if (request.Id == -1 && cmd != "connect")
-               return new ViewModelMessage("message", "Сначала авторизуйтесь: connect login password");
+                Console.WriteLine($"Ответ отправлен клиенту {clientIp}: {response.Command}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка обработки клиента {clientIp}: {ex.Message}");
+                try { SendResponse(handler, new ViewModelMessage("message", "Ошибка сервера")); }
+                catch { }
+            }
+            finally
+            {
+                try { handler.Shutdown(SocketShutdown.Both); handler.Close(); }
+                catch { }
+                Console.WriteLine($"Соединение с {clientIp} закрыто.\n");
+            }
+        }
 
-           if (cmd == "connect")
-           {
-               string[] creds = args.Split(' ', 2);
-               if (creds.Length != 2)
-                   return new ViewModelMessage("message", "Использование: connect login password");
+        private static void SendResponse(Socket handler, ViewModelMessage response)
+        {
+            string json = JsonConvert.SerializeObject(response);
+            byte[] bytes = Encoding.UTF8.GetBytes(json);
+            handler.Send(bytes);
+        }
 
-               string login = creds[0];
-               string password = creds[1];
+        private static ViewModelMessage ProcessCommand(ViewModelSend request, string clientIp)
+        {
+            using var db = new AppDbContext();
 
-               var user = db.Users.FirstOrDefault(u => u.Login == login && u.Password == password);
-               if (user != null)
-               {
-                   Console.WriteLine($"Вход успешен: {login} (ID: {user.Id})");
-                   return new ViewModelMessage("autorization", user.Id.ToString());
-               }
-               return new ViewModelMessage("message", "Неверный логин или пароль");
-           }
+            var log = new UserActionLog
+            {
+                UserId = request.Id == -1 ? (int?)null : request.Id,
+                Command = "",
+                Arguments = "",
+                IpAddress = clientIp,
+                Timestamp = DateTime.UtcNow,
+                Success = false,
+                Result = ""
+            };
 
-           // Проверяем, что пользователь существует
-           var userSession = db.Users.FirstOrDefault(u => u.Id == request.Id);
-           if (userSession == null)
-               return new ViewModelMessage("message", "Сессия недействительна");
+            // Блокировка неавторизованных команд
+            if (request.Id == -1 && !request.Message.TrimStart().StartsWith("connect"))
+            {
+                log.Command = "unauthorized";
+                log.Arguments = request.Message;
+                log.Result = "Требуется авторизация";
+                db.ActionLogs.Add(log);
+                db.SaveChanges();
+                return new ViewModelMessage("message", log.Result);
+            }
 
-           string root = Path.GetFullPath(userSession.RootDirectory).TrimEnd('\\') + "\\";
-           string current = string.IsNullOrEmpty(userSession.CurrentDirectory)
-               ? root
-               : Path.GetFullPath(userSession.CurrentDirectory).TrimEnd('\\') + "\\";
+            // === Загрузка файла (set) — Message = JSON FileInfoFTP ===
+            if (TryParseFileUpload(request.Message, out FileInfoFTP fileInfo))
+            {
+                log.Command = "set";
+                log.Arguments = fileInfo.Name;
 
-           switch (cmd)
-           {
+                var user = db.Users.FirstOrDefault(u => u.Id == request.Id);
+                if (user == null)
+                {
+                    log.Result = "Сессия недействительна";
+                    db.ActionLogs.Add(log);
+                    db.SaveChanges();
+                    return new ViewModelMessage("message", log.Result);
+                }
+
+                log.UserId = user.Id;
+                string rootDir = Path.GetFullPath(user.RootDirectory).TrimEnd('\\') + "\\";
+                string currDir = string.IsNullOrEmpty(user.CurrentDirectory)
+                    ? rootDir
+                    : Path.GetFullPath(user.CurrentDirectory).TrimEnd('\\') + "\\";
+
+                string savePath = Path.Combine(currDir, fileInfo.Name);
+
+                if (!savePath.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    log.Result = "Доступ запрещён (выход за пределы корня)";
+                    db.ActionLogs.Add(log);
+                    db.SaveChanges();
+                    return new ViewModelMessage("message", "Доступ запрещён");
+                }
+
+                try
+                {
+                    File.WriteAllBytes(savePath, fileInfo.Data);
+                    log.Success = true;
+                    log.Result = $"Файл загружен: {fileInfo.Name}";
+                    db.ActionLogs.Add(log);
+                    db.SaveChanges();
+                    return new ViewModelMessage("message", log.Result);
+                }
+                catch (Exception ex)
+                {
+                    log.Result = $"Ошибка записи файла: {ex.Message}";
+                    db.ActionLogs.Add(log);
+                    db.SaveChanges();
+                    return new ViewModelMessage("message", "Ошибка загрузки файла");
+                }
+            }
+
+            // === Авторизация (connect) ===
+            if (request.Message.TrimStart().StartsWith("connect", StringComparison.OrdinalIgnoreCase))
+            {
+                log.Command = "connect";
+                var parts = request.Message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 3)
+                {
+                    log.Result = "Использование: connect <login> <password>";
+                    db.ActionLogs.Add(log);
+                    db.SaveChanges();
+                    return new ViewModelMessage("message", log.Result);
+                }
+
+                string login = parts[1];
+                string password = parts[2];
+                log.Arguments = $"{login} ***";
+
+                var user = db.Users.FirstOrDefault(u => u.Login == login && u.Password == password);
+                if (user != null)
+                {
+                    log.UserId = user.Id;
+                    log.Success = true;
+                    log.Result = "Успешный вход";
+                    db.ActionLogs.Add(log);
+                    db.SaveChanges();
+                    Console.WriteLine($"[УСПЕХ] Вход: {login} (ID: {user.Id}) от {clientIp}");
+                    return new ViewModelMessage("autorization", user.Id.ToString());
+                }
+
+                log.Result = "Неверный логин или пароль";
+                db.ActionLogs.Add(log);
+                db.SaveChanges();
+                return new ViewModelMessage("message", log.Result);
+            }
+
+            // === Обычные команды (cd, get) ===
+            var currentUser = db.Users.FirstOrDefault(u => u.Id == request.Id);
+            if (currentUser == null)
+            {
+                log.Command = "invalid_session";
+                log.Result = "Сессия недействительна";
+                db.ActionLogs.Add(log);
+                db.SaveChanges();
+                return new ViewModelMessage("message", "Сессия истекла");
+            }
+
+            log.UserId = currentUser.Id;
+
+            string rootDirectory = Path.GetFullPath(currentUser.RootDirectory).TrimEnd('\\') + "\\";
+            string currentDirectory = string.IsNullOrEmpty(currentUser.CurrentDirectory)
+                ? rootDirectory
+                : Path.GetFullPath(currentUser.CurrentDirectory).TrimEnd('\\') + "\\";
+
+            string[] cmdParts = request.Message.Split(' ', 2);
+            string command = cmdParts[0].ToLower();
+            string argument = cmdParts.Length > 1 ? cmdParts[1].Trim('"') : "";
+
+            log.Command = command;
+            log.Arguments = argument;
+
+            switch (command)
+            {
                 case "cd":
-                    string newPath = current;
+                    string newPath = currentDirectory;
 
-                    if (string.IsNullOrEmpty(args) || args == ".")
+                    if (string.IsNullOrEmpty(argument) || argument == ".")
                     {
-                        newPath = root;
+                        newPath = rootDirectory;
                     }
-                    else if (args == "..")
+                    else if (argument == "..")
                     {
-                        var parent = Directory.GetParent(current);
-                        if (parent != null)
-                        {
-                            string parentPath = parent.FullName + "\\";
-                            if (parentPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                                newPath = parentPath;
-                            else
-                                newPath = root;
-                        }
-                        else
-                        {
-                            newPath = root;
-                        }
+                        var parent = Directory.GetParent(currentDirectory.TrimEnd('\\'));
+                        newPath = parent != null && (parent.FullName + "\\").StartsWith(rootDirectory, StringComparison.OrdinalIgnoreCase)? parent.FullName + "\\": rootDirectory;
                     }
                     else
                     {
-                        string target = Path.Combine(current, args);
-                        string full = Path.GetFullPath(target);
-
-                        if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase) && Directory.Exists(full))
+                        string target = Path.Combine(currentDirectory, argument);
+                        string fullPath = Path.GetFullPath(target);
+                        if (fullPath.StartsWith(rootDirectory, StringComparison.OrdinalIgnoreCase) && Directory.Exists(fullPath))
                         {
-                            newPath = full.EndsWith("\\") ? full : full + "\\";
+                            newPath = fullPath.EndsWith("\\") ? fullPath : fullPath + "\\";
                         }
                         else
                         {
-                            return new ViewModelMessage("message", "Папка не существует или доступ запрещён");
+                            log.Result = "Папка не найдена или доступ запрещён";
+                            db.ActionLogs.Add(log);
+                            db.SaveChanges();
+                            return new ViewModelMessage("message", log.Result);
                         }
                     }
 
-                    userSession.CurrentDirectory = newPath;
+                    currentUser.CurrentDirectory = newPath;
+                    db.SaveChanges();
+
+                    log.Success = true;
+                    log.Result = "OK";
+                    db.ActionLogs.Add(log);
                     db.SaveChanges();
 
                     return new ViewModelMessage("cd", JsonConvert.SerializeObject(GetDirectoryList(newPath)));
-               case "get":
-                   if (string.IsNullOrEmpty(args))
-                       return new ViewModelMessage("message", "Укажите имя файла");
 
-                   string filePath = Path.Combine(current, args);
-                   if (!filePath.StartsWith(root))
-                       return new ViewModelMessage("message", "Доступ запрещён");
+                case "get":
+                    if (string.IsNullOrEmpty(argument))
+                    {
+                        log.Result = "Укажите имя файла";
+                        db.ActionLogs.Add(log);
+                        db.SaveChanges();
+                        return new ViewModelMessage("message", log.Result);
+                    }
 
-                   if (File.Exists(filePath))
-                   {
-                       byte[] bytes = File.ReadAllBytes(filePath);
-                       return new ViewModelMessage("file", JsonConvert.SerializeObject(bytes));
-                   }
-                   return new ViewModelMessage("message", "Файл не найден");
+                    string filePath = Path.Combine(currentDirectory, argument);
+                    if (!filePath.StartsWith(rootDirectory, StringComparison.OrdinalIgnoreCase))
+                    {
+                        log.Result = "Доступ запрещён";
+                        db.ActionLogs.Add(log);
+                        db.SaveChanges();
+                        return new ViewModelMessage("message", log.Result);
+                    }
 
-               case "set":
-                   try
-                   {
-                       var fileInfo = JsonConvert.DeserializeObject<FileInfoFTP>(request.Message)!;
-                       string savePath = Path.Combine(current, fileInfo.Name);
+                    if (File.Exists(filePath))
+                    {
+                        byte[] fileBytes = File.ReadAllBytes(filePath);
+                        log.Success = true;
+                        log.Result = "OK";
+                        db.ActionLogs.Add(log);
+                        db.SaveChanges();
+                        return new ViewModelMessage("file", JsonConvert.SerializeObject(fileBytes));
+                    }
+                    else
+                    {
+                        log.Result = "Файл не найден";
+                        db.ActionLogs.Add(log);
+                        db.SaveChanges();
+                        return new ViewModelMessage("message", log.Result);
+                    }
 
-                       if (!savePath.StartsWith(root))
-                           return new ViewModelMessage("message", "Доступ запрещён");
+                default:
+                    log.Result = "Неизвестная команда";
+                    db.ActionLogs.Add(log);
+                    db.SaveChanges();
+                    return new ViewModelMessage("message", log.Result);
+            }
+        }
 
-                       File.WriteAllBytes(savePath, fileInfo.Data);
-                       return new ViewModelMessage("message", $"Файл загружен: {fileInfo.Name}");
-                   }
-                   catch
-                   {
-                       return new ViewModelMessage("message", "Ошибка загрузки файла");
-                   }
+        private static bool TryParseFileUpload(string message, out FileInfoFTP fileInfo)
+        {
+            fileInfo = null;
+            try
+            {
+                fileInfo = JsonConvert.DeserializeObject<FileInfoFTP>(message);
+                return fileInfo != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
-               default:
-                   return new ViewModelMessage("message", "Неизвестная команда");
-           }
-       }
+        private static List<string> GetDirectoryList(string path)
+        {
+            var list = new List<string>();
+            try
+            {
+                foreach (string dir in Directory.GetDirectories(path))
+                    list.Add(Path.GetFileName(dir) + "/");
 
-       private static List<string> GetDirectoryList(string path)
-       {
-           var list = new List<string>();
-           try
-           {
-               foreach (string dir in Directory.GetDirectories(path))
-                   list.Add(Path.GetFileName(dir) + "/");
-
-               foreach (string file in Directory.GetFiles(path))
-                   list.Add(Path.GetFileName(file));
-           }
-           catch { }
-           return list;
-       }
+                foreach (string file in Directory.GetFiles(path))
+                    list.Add(Path.GetFileName(file));
+            }
+            catch { }
+            return list;
+        }
     }
-} 
+}
