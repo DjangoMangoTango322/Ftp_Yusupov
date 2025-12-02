@@ -1,19 +1,20 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Common
+﻿namespace Common
 {
     public class ViewModelMessage
     {
-        public string Command {  get; set; }
-        public string Data { get; set; }
-        public ViewModelMessage(string command, string data)
+        public string TypeMessage { get; set; }
+        public string Message { get; set; }
+
+        public ViewModelMessage()
         {
-            this.Command = command;
-            this.Data = data;
+            TypeMessage = "";
+            Message = "";
+        }
+
+        public ViewModelMessage(string typeMessage, string message)
+        {
+            TypeMessage = typeMessage;
+            Message = message;
         }
     }
 }

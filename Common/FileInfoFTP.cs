@@ -1,15 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Common
+﻿namespace Common
 {
     public class FileInfoFTP
     {
-        public byte[] Data { get; set; }
         public string Name { get; set; }
+        public byte[] Data { get; set; }
+
+        public FileInfoFTP()
+        {
+            Name = "";
+            Data = new byte[0];
+        }
+
         public FileInfoFTP(byte[] data, string name)
         {
             Data = data;

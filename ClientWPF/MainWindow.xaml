@@ -3,62 +3,357 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:ClientWPF"
-        mc:Ignorable="d"
-        Title="FTP Client" Height="600" Width="800" AllowDrop="True">
+        Height="650" Width="1000"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI"
+        Background="#F8F9FA">
+
     <Window.Resources>
-        <local:BoolToTypeConverter x:Key="BoolToTypeConverter"/>
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <Style x:Key="ModernButton" TargetType="Button">
+            <Setter Property="Background" Value="#2196F3"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#1976D2"/>
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.02" ScaleY="1.02"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#1565C0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModernTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Style.Triggers>
+                <Trigger Property="IsFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="#2196F3"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ModernListView" TargetType="ListView">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        </Style>
+
+        <Style x:Key="HeaderStyle" TargetType="GridViewColumnHeader">
+            <Setter Property="Background" Value="#F5F5F5"/>
+            <Setter Property="Foreground" Value="#424242"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+            <Setter Property="BorderBrush" Value="#2196F3"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="12,0"/>
+        </Style>
     </Window.Resources>
- 
-    <Grid Margin="10">
+
+    <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Панель подключения -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-            <Label Content="IP:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-            <TextBox Text="{Binding ServerIp}" Width="120" Margin="0,0,5,0"/>
-            <Label Content=":" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding Port}" Width="60" Margin="0,0,5,0"/>
-            <Button Content="🔌 Connect" Command="{Binding ConnectCommand}" Width="80"/>
-            <TextBlock Text="{Binding Status}" 
-                       Margin="20,0,0,0" 
-                       VerticalAlignment="Center"
-                       Foreground="Blue"/>
-        </StackPanel>
+        
+        <Border Grid.Row="0" Background="White" Padding="20" 
+                BorderBrush="#E0E0E0" BorderThickness="0,0,0,1"
+                >
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Logo/Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="-10,0,0,0" RenderTransformOrigin="0.5,0.5">
+                    <StackPanel.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform ScaleX="-1"/>
+                            <SkewTransform/>
+                            <RotateTransform/>
+                            <TranslateTransform/>
+                        </TransformGroup>
+                    </StackPanel.RenderTransform>
+                </StackPanel>
+
+                
+                <Border Grid.Column="1" Background="#F8F9FA" 
+                        CornerRadius="8" Padding="15" Margin="20,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="Сервер:" 
+                                   VerticalAlignment="Center" 
+                                   Foreground="#424242"
+                                   Margin="0,0,8,0"/>
+                        <TextBox Grid.Column="1" x:Name="TxtServer" 
+                                 Text="127.0.0.1" 
+                                
+                                 Margin="0,0,15,0"/>
+
+                        <TextBlock Grid.Column="2" Text="Порт:" 
+                                   VerticalAlignment="Center" 
+                                   Foreground="#424242"
+                                   Margin="0,0,8,0"/>
+                        <TextBox Grid.Column="3" x:Name="TxtPort" 
+                                 Text="8888" 
+                                 
+                                 Margin="0,0,15,0"/>
+
+                        <Button Grid.Column="4" x:Name="BtnConnect" 
+                               Content="Подключиться" 
+                              
+                               Width="120"/>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
 
 
-        <ListView Grid.Row="1" 
-                  ItemsSource="{Binding Files}" 
-                  SelectedItem="{Binding SelectedItem}" 
-                  Name="FilesList">
-            <ListView.View>
-                <GridView>
-                    <GridViewColumn Header="📁 Name" Width="300" DisplayMemberBinding="{Binding DisplayName}"/>
-                    <GridViewColumn Header="Тип" Width="100" DisplayMemberBinding="{Binding IsDirectory, Converter={StaticResource BoolToTypeConverter}}"/>  <!-- ✅ Конвертер работает -->
-                    <GridViewColumn Header="Размер" Width="100" DisplayMemberBinding="{Binding Size}"/>
-                </GridView>
-            </ListView.View>
-            <ListView.InputBindings>
-                <MouseBinding Gesture="LeftDoubleClick" Command="{Binding OpenItemCommand}"/>  <!-- ✅ Исправлено: OpenCommand → OpenItemCommand -->
-            </ListView.InputBindings>
-        </ListView>
+        <Border Grid.Row="1" x:Name="PanelAuth" 
+                Background="White" 
+                Padding="20" 
+                Margin="20,10,20,0"
+                CornerRadius="8"
+                BorderBrush="#E0E0E0" 
+                BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button Content="⬆️ Upload" 
-                    Command="{Binding UploadCommand}" 
-                    Margin="0,0,5,0"
-                    Width="80"/>
-            <Button Content="⬇️ Download" 
-                    Command="{Binding DownloadCommand}"
-                    Width="80"/>
-            <Button Content="🔄 Refresh" 
-                    Command="{Binding RefreshCommand}"
-                    Width="80"/>
-        </StackPanel>
+                <TextBlock Grid.Column="0" Text="Логин:" 
+                           VerticalAlignment="Center" 
+                           Margin="0,0,8,0"
+                           Foreground="#424242"/>
+                <TextBox Grid.Column="1" x:Name="TxtLogin" 
+                         
+                         Margin="0,0,20,0"/>
+
+                <TextBlock Grid.Column="2" Text="Пароль:" 
+                           VerticalAlignment="Center" 
+                           Margin="0,0,8,0"
+                           Foreground="#424242"/>
+                <PasswordBox Grid.Column="3" x:Name="TxtPassword" 
+                             
+                             Margin="0,0,20,0"/>
+
+                <Button Grid.Column="5" x:Name="BtnLogin" 
+                       Content="Войти" 
+                       Foreground="White"
+                       Margin="0,0,10,0"
+                       Background="#4CAF50"/>
+
+                <Button Grid.Column="6" x:Name="BtnRegister" 
+                       Content="Регистрация" 
+                       Foreground="White"
+                       Background="Red"/>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2" Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="White" 
+                    Padding="15" 
+                    CornerRadius="8"
+                    BorderBrush="#E0E0E0" 
+                    BorderThickness="1"
+                    Margin="0,0,0,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+
+                        <TextBlock x:Name="TxtCurrentPath" 
+                                   Text="Не подключен" 
+                                   VerticalAlignment="Center"
+                                   FontSize="14"
+                                   Foreground="#666"/>
+                    </StackPanel>
+
+                    <Button Grid.Column="1" x:Name="BtnRefresh" 
+                           Content="Обновить" 
+                           Foreground="White"
+                           
+                           Width="80" Height="40"
+                           Margin="0,0,10,0"
+                           Background="#607D8B"/>
+
+                    <Button Grid.Column="2" x:Name="BtnUpload" 
+                           Content="Загрузить файл" 
+                           Foreground="White"
+                           
+                           Width="90" Height="40"
+                           Margin="0,0,10,0"
+                           Background="#2196F3"/>
+
+                    <Button Grid.Column="3" x:Name="BtnHistory" 
+                           Content="История" 
+                           Width="70" Height="40"
+                            Foreground="White"
+                           Background="#9C27B0"/>
+                </Grid>
+            </Border>
+            <Border Grid.Row="1" Background="White" 
+                    CornerRadius="8"
+                    BorderBrush="#E0E0E0" 
+                    BorderThickness="1"
+                    Padding="1">
+                <ListView x:Name="ListViewFiles" 
+                          MouseDoubleClick="ListViewFiles_DoubleClick"
+                          >
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Имя" Width="400" 
+                                            HeaderContainerStyle="{StaticResource HeaderStyle}">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="12,8">
+                                            <TextBlock Text="{Binding Icon}" 
+                                                       FontSize="16" 
+                                                       Margin="0,0,8,0"/>
+                                            <TextBlock Text="{Binding DisplayName}" 
+                                                       VerticalAlignment="Center"
+                                                       FontSize="14"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+
+                            <GridViewColumn Header="Тип" Width="150" 
+                                            HeaderContainerStyle="{StaticResource HeaderStyle}"
+                                            DisplayMemberBinding="{Binding Type}"/>
+
+                            <GridViewColumn Header="Размер" Width="120" 
+                                            HeaderContainerStyle="{StaticResource HeaderStyle}"
+                                            DisplayMemberBinding="{Binding Size}"/>
+
+                            <GridViewColumn Header="Действия" Width="200" 
+                                            HeaderContainerStyle="{StaticResource HeaderStyle}">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="12,0">
+                                            <Button Content="Скачать" 
+                                                    Width="90" Height="30"
+                                                    Style="{StaticResource ModernButton}"
+                                                    Tag="{Binding Name}" 
+                                                    Click="BtnDownload_Click"
+                                                    Visibility="{Binding DownloadVisible}"
+                                                    Background="#4CAF50"
+                                                    FontSize="12"
+                                                    Padding="8,4"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                            <Setter Property="BorderBrush" Value="#F5F5F5"/>
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListViewItem">
+                                        <Border x:Name="Bd" 
+                                                Background="{TemplateBinding Background}" 
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#F5F5F5"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#E3F2FD"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                </ListView>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="3" Background="#424242" Padding="15">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="TxtStatus" 
+                           Text="Готов к работе" 
+                           Foreground="White" 
+                           FontSize="13"
+                           VerticalAlignment="Center"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    
+                    <TextBlock Text="Не подключено" 
+                               Foreground="#E0E0E0" 
+                               FontSize="12"/>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

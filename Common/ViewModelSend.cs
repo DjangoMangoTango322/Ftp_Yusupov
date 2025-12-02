@@ -1,18 +1,20 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Common
+﻿namespace Common
 {
     public class ViewModelSend
     {
         public string Message { get; set; }
         public int Id { get; set; }
-        public ViewModelSend(string message, int id) {
-            this.Message = message;
-            this.Id = id;   
+
+        public ViewModelSend()
+        {
+            Message = "";
+            Id = -1;
+        }
+
+        public ViewModelSend(string message, int id)
+        {
+            Message = message;
+            Id = id;
         }
     }
 }

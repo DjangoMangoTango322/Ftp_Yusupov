@@ -10,157 +10,275 @@ namespace Client
 
     public class Program
     {
-        public static IPAddress IpAdress;
-        public static int Port;
-        public static int Id = -1;
+        private static string serverIP = "127.0.0.1";
+        private static int serverPort = 8888;
+        private static int userId = -1;
 
-        public static bool CheckCommand(string message)
+        static void Main(string[] args)
         {
-            bool BCommand = false;
-            string[] DataMessage = message.Split(new string[1] { " " }, StringSplitOptions.None);
+            Console.OutputEncoding = Encoding.UTF8;
+            Console.Title = "FTP Client";
 
-            if (DataMessage.Length > 0)
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.ForegroundColor = ConsoleColor.White;
+
+            Console.Write("IP сервера (Enter = 127.0.0.1): ");
+            string ip = Console.ReadLine();
+            if (!string.IsNullOrWhiteSpace(ip)) serverIP = ip;
+
+            Console.Write("Порт (Enter = 8888): ");
+            string portStr = Console.ReadLine();
+            if (!string.IsNullOrWhiteSpace(portStr)) serverPort = int.Parse(portStr);
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"\n✓ Сервер: {serverIP}:{serverPort}\n");
+            Console.ForegroundColor = ConsoleColor.White;
+
+            while (true)
             {
-                string Command = DataMessage[0];
-                if (Command == "connect")
-                {
-                    if (DataMessage.Length != 3)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("Использование: connect [login] [password]\nПример: connect User1 P@ssw0rd");
-                        BCommand = false;
-                    }
-                    else
-                        BCommand = true;
-                }
-                else if (Command == "cd")
-                    BCommand = true;
-                else if (Command == "get")
-                {
-                    if (DataMessage.Length == 1)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("Использование: get [NameFile]\nПример: get Test.txt");
-                        BCommand = false;
-                    }
-                    else
-                        BCommand = true;
+                ShowMenu();
+                string choice = Console.ReadLine();
 
-                }
-                else if (Command == "set")
+                switch (choice)
                 {
-                    if (DataMessage.Length == 1)
-                    {
+                    case "1":
+                        Register();
+                        break;
+                    case "2":
+                        Login();
+                        break;
+                    case "3":
+                        ShowFiles();
+                        break;
+                    case "4":
+                        ShowHistory();
+                        break;
+                    case "0":
+                        Console.WriteLine("\nДо свидания!");
+                        return;
+                    default:
                         Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("Использование: set [NameFile]\nПример: get Test.txt");
-                        BCommand = false;
-                    }
-                    else 
-                        BCommand = true;
+                        Console.WriteLine("\nНеверный выбор!");
+                        Console.ForegroundColor = ConsoleColor.White;
+                        break;
                 }
             }
-            return BCommand;
         }
-        public static void ConnectServer()
+
+        static void ShowMenu()
+        {
+            if (userId == -1)
+            {
+                Console.WriteLine("1 - Регистрация");
+                Console.WriteLine("2 - Войти");
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[Вы вошли, ID: {userId}]");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine("3 - Показать файлы");
+                Console.WriteLine("4 - История команд");
+            }
+            Console.WriteLine("0 - Выход");
+            Console.Write("Выбор: ");
+        }
+
+        static ViewModelMessage SendRequest(string message)
         {
             try
             {
-                IPEndPoint endPoint = new IPEndPoint(IpAdress, Port);
-                Socket socket = new Socket(
-                    AddressFamily.InterNetwork,
-                    SocketType.Stream,
-                    ProtocolType.Tcp);
+                Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(serverIP), serverPort);
                 socket.Connect(endPoint);
-                if (socket.Connected)
+
+                ViewModelSend request = new ViewModelSend
                 {
+                    Message = message,
+                    Id = userId
+                };
+
+                string json = JsonConvert.SerializeObject(request);
+                byte[] data = Encoding.UTF8.GetBytes(json);
+                socket.Send(data);
+
+                byte[] buffer = new byte[1024 * 1024 * 10];
+                int received = socket.Receive(buffer);
+                string response = Encoding.UTF8.GetString(buffer, 0, received);
+
+                socket.Shutdown(SocketShutdown.Both);
+                socket.Close();
+
+                return JsonConvert.DeserializeObject<ViewModelMessage>(response);
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\nОшибка соединения: {ex.Message}");
+                Console.ForegroundColor = ConsoleColor.White;
+                return null;
+            }
+        }
+
+        static void Register()
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n--- РЕГИСТРАЦИЯ ---");
+            Console.ForegroundColor = ConsoleColor.White;
+
+            Console.Write("Логин: ");
+            string login = Console.ReadLine();
+
+            Console.Write("Пароль: ");
+            string password = Console.ReadLine();
+
+            Console.Write("Путь к папке (например C:\\MyFolder): ");
+            string path = Console.ReadLine();
+
+            if (string.IsNullOrWhiteSpace(login) || string.IsNullOrWhiteSpace(password) || string.IsNullOrWhiteSpace(path))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("\nВсе поля обязательны!");
+                Console.ForegroundColor = ConsoleColor.White;
+                return;
+            }
+
+            string message = $"register {login} {password} {path}";
+            ViewModelMessage response = SendRequest(message);
+
+            if (response != null)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"\n{response.Message}");
+                Console.ForegroundColor = ConsoleColor.White;
+            }
+        }
+
+        static void Login()
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n--- ВХОД ---");
+            Console.ForegroundColor = ConsoleColor.White;
+
+            Console.Write("Логин: ");
+            string login = Console.ReadLine();
+
+            Console.Write("Пароль: ");
+            string password = Console.ReadLine();
+
+            if (string.IsNullOrWhiteSpace(login) || string.IsNullOrWhiteSpace(password))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("\nЛогин и пароль обязательны!");
+                Console.ForegroundColor = ConsoleColor.White;
+                return;
+            }
+
+            string message = $"connect {login} {password}";
+            ViewModelMessage response = SendRequest(message);
+
+            if (response != null)
+            {
+                if (response.TypeMessage == "authorization")
+                {
+                    userId = int.Parse(response.Message);
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"\n✓ Вход выполнен! ID: {userId}");
                     Console.ForegroundColor = ConsoleColor.White;
-                    string message = Console.ReadLine();
-                    if (CheckCommand(message))
-                    {
-                        ViewModelSend viewModelSend = new ViewModelSend(message, Id);
-                        if (message.Split(new string[1] { " " }, StringSplitOptions.None)[0] == "set")
-                        {
-                            string[] DataMessage = message.Split(new string[1] { " " }, StringSplitOptions.None);
-                            string NameFile = "";
-                            for (int i = 1; i < DataMessage.Length; i++)
-                                if (NameFile == "")
-                                    NameFile += DataMessage[i];
-                                else
-                                    NameFile += " " + DataMessage[i];
-
-                            if (File.Exists(NameFile))
-                            {
-                                FileInfo FileInfo = new FileInfo(NameFile);
-                                FileInfoFTP NewFileInfo = new FileInfoFTP(File.ReadAllBytes(NameFile), FileInfo.Name);
-                                viewModelSend = new ViewModelSend(JsonConvert.SerializeObject(NewFileInfo), Id);
-                            }
-                            else
-                            {
-                                Console.ForegroundColor = ConsoleColor.Red;
-                                Console.WriteLine("Указанный файл не существует");
-                            }
-                        }
-                        byte[] messageByte = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(viewModelSend));
-                        int BytesSend = socket.Send(messageByte);
-                        byte[] bytes = new byte[10485760];
-                        int BytesRec = socket.Receive(bytes);
-                        string messageServer = Encoding.UTF8.GetString(bytes, 0, BytesRec);
-                        ViewModelMessage viewModelMessage = JsonConvert.DeserializeObject<ViewModelMessage>(messageServer);
-
-                        if (viewModelMessage.Command == "autorization")
-                            Id = int.Parse(viewModelMessage.Data);
-                        else if (viewModelMessage.Command == "message")
-                            Console.WriteLine(viewModelMessage.Data);
-                        else if (viewModelMessage.Command == "cd")
-                        {
-                            List<string> FoldersFiles = new List<string>();
-                            FoldersFiles = JsonConvert.DeserializeObject<List<string>>(viewModelMessage.Data);
-                            foreach (string Name in FoldersFiles)
-                                Console.WriteLine(Name);
-                        }
-                        else if (viewModelMessage.Command == "file")
-                        {
-                            string[] DataMessage = viewModelSend.Message.Split(new string[1] { " " }, StringSplitOptions.None);
-                            string getFile = "";
-                            for (int i = 1; i < DataMessage.Length; i++)
-                                if (getFile == "")
-                                    getFile = DataMessage[i];
-                                else
-                                    getFile += " " + DataMessage[i];
-                            byte[] byteFile = JsonConvert.DeserializeObject<byte[]>(viewModelMessage.Data);
-                            File.WriteAllBytes(Directory.GetCurrentDirectory() + getFile, byteFile);
-                        }
-                    }
                 }
                 else
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("Подключение не удалосью");
+                    Console.WriteLine($"\n✗ {response.Message}");
+                    Console.ForegroundColor = ConsoleColor.White;
                 }
-                socket.Close();
             }
-            catch (Exception exp) 
-            {
-            Console.ForegroundColor= ConsoleColor.Red;
-                Console.WriteLine("Что-то случилось: " + exp.Message);
-            }
-        } 
-        static void Main(string[] args)
+        }
+
+        static void ShowFiles()
         {
-            Console.WriteLine("Ввдеите IP адрес сервера: ");
-            string sIpAdress = Console.ReadLine();
-            Console.WriteLine("Введите порт: ");
-            string sPort = Console.ReadLine();
-            if (int.TryParse(sPort, out Port) && IPAddress.TryParse(sIpAdress, out IpAdress))
+            if (userId == -1)
             {
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("Данные успешно введены. Подключаюсь к сервер.");
-                while (true)
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("\nСначала войдите в систему!");
+                Console.ForegroundColor = ConsoleColor.White;
+                return;
+            }
+
+            ViewModelMessage response = SendRequest("cd");
+
+            if (response != null)
+            {
+                if (response.TypeMessage == "cd")
                 {
-                    ConnectServer();
+                    List<string> files = JsonConvert.DeserializeObject<List<string>>(response.Message);
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine("\n--- СОДЕРЖИМОЕ ПАПКИ ---");
+                    if (files.Count == 0)
+                    {
+                        Console.WriteLine("  (пусто)");
+                    }
+                    else
+                    {
+                        foreach (string file in files)
+                        {
+                            Console.WriteLine($"  {file}");
+                        }
+                    }
+                    Console.ForegroundColor = ConsoleColor.White;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"\n{response.Message}");
+                    Console.ForegroundColor = ConsoleColor.White;
+                }
+            }
+        }
+
+        static void ShowHistory()
+        {
+            if (userId == -1)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("\nСначала войдите в систему!");
+                Console.ForegroundColor = ConsoleColor.White;
+                return;
+            }
+
+            Console.WriteLine("\nЗапрос истории команд...");
+            ViewModelMessage response = SendRequest("history");
+
+            if (response != null)
+            {
+                if (response.TypeMessage == "history")
+                {
+                    List<string> history = JsonConvert.DeserializeObject<List<string>>(response.Message);
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.ForegroundColor = ConsoleColor.White;
+
+                    if (history.Count == 0)
+                    {
+                        Console.WriteLine("\n  История команд пуста");
+                    }
+                    else
+                    {
+                        int number = 1;
+                        foreach (string record in history)
+                        {
+                            Console.WriteLine($"{number}. {record}");
+                            number++;
+                        }
+                    }
+                    Console.ForegroundColor = ConsoleColor.White;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"\n{response.Message}");
+                    Console.ForegroundColor = ConsoleColor.White;
                 }
             }
         }
     }
 }
-

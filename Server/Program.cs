@@ -1,386 +1,575 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Common;
-using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 using Newtonsoft.Json;
-using Server.Models; 
 
-namespace Server 
+namespace Server
 {
-    public class Program 
+    public class Program
     {
-        public static IPAddress IpAdress;
-        public static int Port;
+        private static IPAddress ipAddress;
+        private static int port;
+        private static string connectionString = "Server=localhost;Database=ftp_server;Uid=root;Pwd=;";
 
-        public static void Main(string[] args)
+        static void Main(string[] args)
         {
-            // Создаём БД и тестового пользователя
-            using (var db = new AppDbContext())
-            {
-                db.Database.Migrate();
+            Console.OutputEncoding = Encoding.UTF8;
+            Console.Title = "FTP Server";
 
-                if (!db.Users.Any(u => u.Login == "yusupov"))
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.ForegroundColor = ConsoleColor.White;
+
+            Console.WriteLine("Проверка подключения к MySQL...");
+            try
+            {
+                using (MySqlConnection testConn = new MySqlConnection(connectionString))
                 {
-                    db.Users.Add(new User
+                    testConn.Open();
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("✓ Подключение к MySQL успешно!");
+
+                    MySqlCommand versionCmd = new MySqlCommand("SELECT VERSION()", testConn);
+                    string version = versionCmd.ExecuteScalar()?.ToString();
+                    Console.WriteLine($"✓ Версия MySQL: {version}");
+
+                    MySqlCommand tableCmd = new MySqlCommand("SHOW TABLES FROM ftp_server", testConn);
+                    MySqlDataReader reader = tableCmd.ExecuteReader();
+                    Console.WriteLine("✓ Таблицы в БД:");
+                    while (reader.Read())
                     {
-                        Login = "yusupov",
-                        Password = "Asdfg123",
-                        RootDirectory = @"C:\Users\student-a502.PERMAVIAT\Desktop\asd\Ftp_Yusupov",
-                        CurrentDirectory = @"C:\Users\student-a502.PERMAVIAT\Desktop\asd\Ftp_Yusupov"
-                    });
-                    db.SaveChanges();
-                    Console.WriteLine("Создан пользователь: yusupov / Asdfg123");
+                        Console.WriteLine($"  - {reader.GetString(0)}");
+                    }
+                    reader.Close();
+                    Console.ForegroundColor = ConsoleColor.White;
                 }
             }
-
-            Console.Write("IP сервера (по умолчанию 127.0.0.1): ");
-            string sIp = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(sIp)) sIp = "127.0.0.1";
-
-            Console.Write("Порт (по умолчанию 8080): ");
-            string sPort = Console.ReadLine();
-            if (string.IsNullOrWhiteSpace(sPort)) sPort = "8080";
-
-            if (IPAddress.TryParse(sIp, out IpAdress) && int.TryParse(sPort, out Port))
+            catch (MySqlException ex)
             {
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"Сервер запущен: {IpAdress}:{Port}");
-                Console.ResetColor();
-                StartServer();
-            }
-            else
-            {
-                Console.WriteLine("Ошибка ввода IP или порта!");
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"✗ ОШИБКА MySQL [{ex.Number}]: {ex.Message}");
+                Console.WriteLine($"SQL State: {ex.SqlState}");
+                Console.WriteLine("\nПроверьте:");
+                Console.WriteLine("1. Запущен ли MySQL (XAMPP)");
+                Console.WriteLine("2. Существует ли база данных 'ftp_server'");
+                Console.WriteLine("3. Правильность строки подключения");
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine("\nНажмите любую клавишу для выхода...");
+                Console.ReadKey();
+                return;
             }
 
-            Console.WriteLine("Нажмите любую клавишу для выхода...");
-            Console.ReadKey();
+            Console.WriteLine();
+            Console.Write("IP адрес (Enter = 127.0.0.1): ");
+            string ip = Console.ReadLine();
+            ipAddress = string.IsNullOrWhiteSpace(ip) ? IPAddress.Parse("127.0.0.1") : IPAddress.Parse(ip);
+
+            Console.Write("Порт (Enter = 8888): ");
+            string portStr = Console.ReadLine();
+            port = string.IsNullOrWhiteSpace(portStr) ? 8888 : int.Parse(portStr);
+
+            StartServer();
         }
 
-        public static void StartServer()
+        static void StartServer()
         {
-            var endPoint = new IPEndPoint(IpAdress, Port);
-            var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            IPEndPoint endPoint = new IPEndPoint(ipAddress, port);
 
-            try
+            serverSocket.Bind(endPoint);
+            serverSocket.Listen(10);
+
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"\n✓ Сервер запущен: {ipAddress}:{port}\n");
+            Console.ForegroundColor = ConsoleColor.White;
+
+            Dictionary<int, string> userFolders = new Dictionary<int, string>();
+
+            while (true)
             {
-                listener.Bind(endPoint);
-                listener.Listen(10);
-                Console.WriteLine("Ожидание подключений...");
-
-                while (true)
-                {
-                    Socket client = listener.Accept();
-                    var clientEndPoint = client.RemoteEndPoint as IPEndPoint;
-                    _ = Task.Run(() => HandleClient(client, clientEndPoint));
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Ошибка сервера: " + ex.Message);
-            }
-        }
-
-        private static void HandleClient(Socket handler, IPEndPoint clientEndPoint)
-        {
-            string clientIp = clientEndPoint?.Address.ToString() ?? "unknown";
-
-            try
-            {
-                byte[] buffer = new byte[10 * 1024 * 1024];
-                int bytesRec = handler.Receive(buffer);
-
-                if (bytesRec == 0)
-                {
-                    Console.WriteLine($"Клиент {clientIp} отключился без данных.");
-                    return;
-                }
-
-                string receivedData = Encoding.UTF8.GetString(buffer, 0, bytesRec);
-                Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Запрос от {clientIp}: {receivedData}");
-
-                var request = JsonConvert.DeserializeObject<ViewModelSend>(receivedData);
-                if (request == null)
-                {
-                    SendResponse(handler, new ViewModelMessage("message", "Неверный формат данных"));
-                    return;
-                }
-
-                var response = ProcessCommand(request, clientIp);
-                string jsonResponse = JsonConvert.SerializeObject(response);
-                byte[] msg = Encoding.UTF8.GetBytes(jsonResponse);
-                handler.Send(msg);
-
-                Console.WriteLine($"Ответ отправлен клиенту {clientIp}: {response.Command}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Ошибка обработки клиента {clientIp}: {ex.Message}");
-                try { SendResponse(handler, new ViewModelMessage("message", "Ошибка сервера")); }
-                catch { }
-            }
-            finally
-            {
-                try { handler.Shutdown(SocketShutdown.Both); handler.Close(); }
-                catch { }
-                Console.WriteLine($"Соединение с {clientIp} закрыто.\n");
-            }
-        }
-
-        private static void SendResponse(Socket handler, ViewModelMessage response)
-        {
-            string json = JsonConvert.SerializeObject(response);
-            byte[] bytes = Encoding.UTF8.GetBytes(json);
-            handler.Send(bytes);
-        }
-
-        private static ViewModelMessage ProcessCommand(ViewModelSend request, string clientIp)
-        {
-            using var db = new AppDbContext();
-
-            var log = new UserActionLog
-            {
-                UserId = request.Id == -1 ? (int?)null : request.Id,
-                Command = "",
-                Arguments = "",
-                IpAddress = clientIp,
-                Timestamp = DateTime.UtcNow,
-                Success = false,
-                Result = ""
-            };
-
-            // Блокировка неавторизованных команд
-            if (request.Id == -1 && !request.Message.TrimStart().StartsWith("connect"))
-            {
-                log.Command = "unauthorized";
-                log.Arguments = request.Message;
-                log.Result = "Требуется авторизация";
-                db.ActionLogs.Add(log);
-                db.SaveChanges();
-                return new ViewModelMessage("message", log.Result);
-            }
-
-            // === Загрузка файла (set) — Message = JSON FileInfoFTP ===
-            if (TryParseFileUpload(request.Message, out FileInfoFTP fileInfo))
-            {
-                log.Command = "set";
-                log.Arguments = fileInfo.Name;
-
-                var user = db.Users.FirstOrDefault(u => u.Id == request.Id);
-                if (user == null)
-                {
-                    log.Result = "Сессия недействительна";
-                    db.ActionLogs.Add(log);
-                    db.SaveChanges();
-                    return new ViewModelMessage("message", log.Result);
-                }
-
-                log.UserId = user.Id;
-                string rootDir = Path.GetFullPath(user.RootDirectory).TrimEnd('\\') + "\\";
-                string currDir = string.IsNullOrEmpty(user.CurrentDirectory)
-                    ? rootDir
-                    : Path.GetFullPath(user.CurrentDirectory).TrimEnd('\\') + "\\";
-
-                string savePath = Path.Combine(currDir, fileInfo.Name);
-
-                if (!savePath.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase))
-                {
-                    log.Result = "Доступ запрещён (выход за пределы корня)";
-                    db.ActionLogs.Add(log);
-                    db.SaveChanges();
-                    return new ViewModelMessage("message", "Доступ запрещён");
-                }
-
                 try
                 {
-                    File.WriteAllBytes(savePath, fileInfo.Data);
-                    log.Success = true;
-                    log.Result = $"Файл загружен: {fileInfo.Name}";
-                    db.ActionLogs.Add(log);
-                    db.SaveChanges();
-                    return new ViewModelMessage("message", log.Result);
+                    Socket clientSocket = serverSocket.Accept();
+                    string clientIP = ((IPEndPoint)clientSocket.RemoteEndPoint).Address.ToString();
+
+                    byte[] buffer = new byte[1024 * 1024 * 10];
+                    int received = clientSocket.Receive(buffer);
+                    string data = Encoding.UTF8.GetString(buffer, 0, received);
+
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] Клиент: {clientIP}");
+                    Console.WriteLine($"Данные: {data}");
+                    Console.ForegroundColor = ConsoleColor.White;
+
+                    ViewModelSend request = JsonConvert.DeserializeObject<ViewModelSend>(data);
+
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    ViewModelMessage response = ProcessRequest(request, clientIP, userFolders);
+                    stopwatch.Stop();
+
+                    if (request.Id != -1 && !request.Message.StartsWith("connect") && !request.Message.StartsWith("register"))
+                    {
+                        LogCommand(request.Id, request.Message, clientIP, stopwatch.ElapsedMilliseconds,
+                                   response.TypeMessage == "message" ? "error" : "success", response.Message);
+                    }
+
+                    string jsonResponse = JsonConvert.SerializeObject(response);
+                    byte[] responseBytes = Encoding.UTF8.GetBytes(jsonResponse);
+                    clientSocket.Send(responseBytes);
+
+                    clientSocket.Shutdown(SocketShutdown.Both);
+                    clientSocket.Close();
                 }
                 catch (Exception ex)
                 {
-                    log.Result = $"Ошибка записи файла: {ex.Message}";
-                    db.ActionLogs.Add(log);
-                    db.SaveChanges();
-                    return new ViewModelMessage("message", "Ошибка загрузки файла");
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Ошибка: {ex.Message}");
+                    Console.ForegroundColor = ConsoleColor.White;
                 }
             }
+        }
 
-            // === Авторизация (connect) ===
-            if (request.Message.TrimStart().StartsWith("connect", StringComparison.OrdinalIgnoreCase))
-            {
-                log.Command = "connect";
-                var parts = request.Message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length < 3)
-                {
-                    log.Result = "Использование: connect <login> <password>";
-                    db.ActionLogs.Add(log);
-                    db.SaveChanges();
-                    return new ViewModelMessage("message", log.Result);
-                }
-
-                string login = parts[1];
-                string password = parts[2];
-                log.Arguments = $"{login} ***";
-
-                var user = db.Users.FirstOrDefault(u => u.Login == login && u.Password == password);
-                if (user != null)
-                {
-                    log.UserId = user.Id;
-                    log.Success = true;
-                    log.Result = "Успешный вход";
-                    db.ActionLogs.Add(log);
-                    db.SaveChanges();
-                    Console.WriteLine($"[УСПЕХ] Вход: {login} (ID: {user.Id}) от {clientIp}");
-                    return new ViewModelMessage("autorization", user.Id.ToString());
-                }
-
-                log.Result = "Неверный логин или пароль";
-                db.ActionLogs.Add(log);
-                db.SaveChanges();
-                return new ViewModelMessage("message", log.Result);
-            }
-
-            // === Обычные команды (cd, get) ===
-            var currentUser = db.Users.FirstOrDefault(u => u.Id == request.Id);
-            if (currentUser == null)
-            {
-                log.Command = "invalid_session";
-                log.Result = "Сессия недействительна";
-                db.ActionLogs.Add(log);
-                db.SaveChanges();
-                return new ViewModelMessage("message", "Сессия истекла");
-            }
-
-            log.UserId = currentUser.Id;
-
-            string rootDirectory = Path.GetFullPath(currentUser.RootDirectory).TrimEnd('\\') + "\\";
-            string currentDirectory = string.IsNullOrEmpty(currentUser.CurrentDirectory)
-                ? rootDirectory
-                : Path.GetFullPath(currentUser.CurrentDirectory).TrimEnd('\\') + "\\";
-
-            string[] cmdParts = request.Message.Split(' ', 2);
-            string command = cmdParts[0].ToLower();
-            string argument = cmdParts.Length > 1 ? cmdParts[1].Trim('"') : "";
-
-            log.Command = command;
-            log.Arguments = argument;
+        static ViewModelMessage ProcessRequest(ViewModelSend request, string clientIP, Dictionary<int, string> userFolders)
+        {
+            string[] parts = request.Message.Split(' ');
+            string command = parts[0].ToLower();
 
             switch (command)
             {
-                case "cd":
-                    string newPath = currentDirectory;
+                case "register":
+                    return HandleRegister(parts, clientIP);
 
-                    if (string.IsNullOrEmpty(argument) || argument == ".")
+                case "connect":
+                    return HandleConnect(parts, clientIP);
+
+                case "cd":
+                    return HandleCD(request, userFolders, clientIP);
+
+                case "get":
+                    return HandleGet(request, userFolders, clientIP);
+
+                case "history":
+                    return HandleHistory(request);
+
+                default:
+                    return HandleUpload(request, userFolders);
+            }
+        }
+
+        static ViewModelMessage HandleRegister(string[] parts, string clientIP)
+        {
+            if (parts.Length < 4)
+            {
+                return new ViewModelMessage("message", "Формат: register логин пароль путь");
+            }
+
+            string login = parts[1];
+            string password = parts[2];
+            string path = string.Join(" ", parts.Skip(3));
+
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"→ Регистрация: {login}");
+            Console.ForegroundColor = ConsoleColor.White;
+
+            MySqlConnection conn = null;
+            try
+            {
+                conn = new MySqlConnection(connectionString);
+                conn.Open();
+
+                MySqlCommand checkCmd = new MySqlCommand("SELECT COUNT(*) FROM users WHERE login=@login", conn);
+                checkCmd.Parameters.AddWithValue("@login", login);
+                int exists = Convert.ToInt32(checkCmd.ExecuteScalar());
+
+                if (exists > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("  Пользователь уже существует");
+                    Console.ForegroundColor = ConsoleColor.White;
+                    return new ViewModelMessage("message", "Логин уже занят");
+                }
+
+                MySqlCommand insertCmd = new MySqlCommand(
+                    "INSERT INTO users (login, password, src) VALUES (@login, @password, @src)", conn);
+                insertCmd.Parameters.AddWithValue("@login", login);
+                insertCmd.Parameters.AddWithValue("@password", password);
+                insertCmd.Parameters.AddWithValue("@src", path);
+
+                int result = insertCmd.ExecuteNonQuery();
+
+                if (result > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Пользователь {login} зарегистрирован!");
+                    Console.ForegroundColor = ConsoleColor.White;
+                    return new ViewModelMessage("message", "Регистрация успешна!");
+                }
+            }
+            catch (MySqlException ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"  ✗ MySQL ошибка: {ex.Message}");
+                Console.ForegroundColor = ConsoleColor.White;
+                return new ViewModelMessage("message", $"Ошибка БД: {ex.Message}");
+            }
+            finally
+            {
+                if (conn != null && conn.State == System.Data.ConnectionState.Open)
+                    conn.Close();
+            }
+
+            return new ViewModelMessage("message", "Ошибка регистрации");
+        }
+
+        static ViewModelMessage HandleConnect(string[] parts, string clientIP)
+        {
+            if (parts.Length < 3)
+            {
+                return new ViewModelMessage("message", "Формат: connect логин пароль");
+            }
+
+            string login = parts[1];
+            string password = parts[2];
+
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"→ Авторизация: {login}");
+            Console.ForegroundColor = ConsoleColor.White;
+
+            MySqlConnection conn = null;
+            try
+            {
+                conn = new MySqlConnection(connectionString);
+                conn.Open();
+
+                MySqlCommand cmd = new MySqlCommand(
+                    "SELECT id FROM users WHERE login=@login AND password=@password", conn);
+                cmd.Parameters.AddWithValue("@login", login);
+                cmd.Parameters.AddWithValue("@password", password);
+
+                object result = cmd.ExecuteScalar();
+
+                if (result != null)
+                {
+                    int userId = Convert.ToInt32(result);
+
+                    try
                     {
-                        newPath = rootDirectory;
+                        MySqlCommand logCmd = new MySqlCommand(
+                            "INSERT INTO user_sessions (user_id, ip_address) VALUES (@userId, @ip)", conn);
+                        logCmd.Parameters.AddWithValue("@userId", userId);
+                        logCmd.Parameters.AddWithValue("@ip", clientIP);
+                        logCmd.ExecuteNonQuery();
                     }
-                    else if (argument == "..")
+                    catch { }
+
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"  ✓ Авторизован. ID: {userId}");
+                    Console.ForegroundColor = ConsoleColor.White;
+
+                    return new ViewModelMessage("authorization", userId.ToString());
+                }
+            }
+            catch (MySqlException ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"  ✗ MySQL ошибка: {ex.Message}");
+                Console.ForegroundColor = ConsoleColor.White;
+                return new ViewModelMessage("message", $"Ошибка БД: {ex.Message}");
+            }
+            finally
+            {
+                if (conn != null && conn.State == System.Data.ConnectionState.Open)
+                    conn.Close();
+            }
+
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("  Неверные данные");
+            Console.ForegroundColor = ConsoleColor.White;
+            return new ViewModelMessage("message", "Неверный логин или пароль");
+        }
+
+        static ViewModelMessage HandleCD(ViewModelSend request, Dictionary<int, string> userFolders, string clientIP)
+        {
+            if (request.Id == -1)
+            {
+                return new ViewModelMessage("message", "Сначала авторизуйтесь");
+            }
+
+            try
+            {
+                string userPath = GetUserPath(request.Id);
+
+                if (!userFolders.ContainsKey(request.Id))
+                {
+                    userFolders[request.Id] = userPath;
+                }
+
+                string[] parts = request.Message.Split(new[] { ' ' }, 2);
+                string command = parts[0]; // "cd"
+
+                if (parts.Length > 1)
+                {
+                    string targetFolder = parts[1].Trim();
+
+                    if (targetFolder == "..")
                     {
-                        var parent = Directory.GetParent(currentDirectory.TrimEnd('\\'));
-                        newPath = parent != null && (parent.FullName + "\\").StartsWith(rootDirectory, StringComparison.OrdinalIgnoreCase)? parent.FullName + "\\": rootDirectory;
+                        string currentUserPath = userFolders[request.Id];
+                        DirectoryInfo parentDir = Directory.GetParent(currentUserPath);
+
+                        if (parentDir != null)
+                        {
+                            userFolders[request.Id] = parentDir.FullName;
+                        }
+                    }
+                    else if (targetFolder == "~")
+                    {
+                        userFolders[request.Id] = userPath;
                     }
                     else
                     {
-                        string target = Path.Combine(currentDirectory, argument);
-                        string fullPath = Path.GetFullPath(target);
-                        if (fullPath.StartsWith(rootDirectory, StringComparison.OrdinalIgnoreCase) && Directory.Exists(fullPath))
+                        string newPath = Path.Combine(userFolders[request.Id], targetFolder);
+
+                        if (Directory.Exists(newPath))
                         {
-                            newPath = fullPath.EndsWith("\\") ? fullPath : fullPath + "\\";
+                            userFolders[request.Id] = newPath;
                         }
                         else
                         {
-                            log.Result = "Папка не найдена или доступ запрещён";
-                            db.ActionLogs.Add(log);
-                            db.SaveChanges();
-                            return new ViewModelMessage("message", log.Result);
+                            return new ViewModelMessage("message", $"Папка не найдена: {targetFolder}");
+                        }
+                    }
+                }
+
+                string finalPath = userFolders[request.Id];
+
+                if (!Directory.Exists(finalPath))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"  ⚠ Папка не существует: {finalPath}");
+                    Console.WriteLine($"  → Создаю папку...");
+                    Console.ForegroundColor = ConsoleColor.White;
+
+                    try
+                    {
+                        Directory.CreateDirectory(finalPath);
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine($"  ✓ Папка создана");
+                        Console.ForegroundColor = ConsoleColor.White;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine($"  ✗ Не удалось создать папку: {ex.Message}");
+                        Console.ForegroundColor = ConsoleColor.White;
+                        return new ViewModelMessage("message", $"Папка не существует: {finalPath}");
+                    }
+                }
+
+                List<string> items = new List<string>();
+
+                DirectoryInfo parent = Directory.GetParent(finalPath);
+                if (parent != null)
+                {
+                    items.Add("../");
+                }
+
+                foreach (string dir in Directory.GetDirectories(finalPath))
+                {
+                    items.Add(Path.GetFileName(dir) + "/");
+                }
+
+                foreach (string file in Directory.GetFiles(finalPath))
+                {
+                    items.Add(Path.GetFileName(file));
+                }
+
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"  → Просмотр папки: {finalPath} ({items.Count} элементов)");
+                Console.ForegroundColor = ConsoleColor.White;
+
+                var result = new
+                {
+                    items = items,
+                    currentPath = finalPath
+                };
+
+                return new ViewModelMessage("cd", JsonConvert.SerializeObject(result));
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"  ✗ Ошибка: {ex.Message}");
+                Console.ForegroundColor = ConsoleColor.White;
+                return new ViewModelMessage("message", $"Ошибка: {ex.Message}");
+            }
+        }
+
+
+
+        static ViewModelMessage HandleGet(ViewModelSend request, Dictionary<int, string> userFolders, string clientIP)
+        {
+            if (request.Id == -1)
+            {
+                return new ViewModelMessage("message", "Сначала авторизуйтесь");
+            }
+
+            try
+            {
+                string[] parts = request.Message.Split(new[] { ' ' }, 2);
+                if (parts.Length < 2)
+                {
+                    return new ViewModelMessage("message", "Укажите имя файла");
+                }
+
+                string fileName = parts[1];
+                string currentPath = userFolders[request.Id];
+                string filePath = Path.Combine(currentPath, fileName);
+
+                if (File.Exists(filePath))
+                {
+                    byte[] fileData = File.ReadAllBytes(filePath);
+
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine($"  → Скачивание файла: {fileName} ({fileData.Length} байт)");
+                    Console.ForegroundColor = ConsoleColor.White;
+
+                    return new ViewModelMessage("file", JsonConvert.SerializeObject(fileData));
+                }
+
+                return new ViewModelMessage("message", "Файл не найден");
+            }
+            catch (Exception ex)
+            {
+                return new ViewModelMessage("message", $"Ошибка: {ex.Message}");
+            }
+        }
+
+        static ViewModelMessage HandleUpload(ViewModelSend request, Dictionary<int, string> userFolders)
+        {
+            if (request.Id == -1)
+            {
+                return new ViewModelMessage("message", "Сначала авторизуйтесь");
+            }
+
+            try
+            {
+                FileInfoFTP fileInfo = JsonConvert.DeserializeObject<FileInfoFTP>(request.Message);
+                string currentPath = userFolders[request.Id];
+                string filePath = Path.Combine(currentPath, fileInfo.Name);
+
+                File.WriteAllBytes(filePath, fileInfo.Data);
+
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"  → Загружен файл: {fileInfo.Name} ({fileInfo.Data.Length} байт)");
+                Console.ForegroundColor = ConsoleColor.White;
+
+                return new ViewModelMessage("message", "Файл успешно загружен");
+            }
+            catch (Exception ex)
+            {
+                return new ViewModelMessage("message", $"Ошибка загрузки: {ex.Message}");
+            }
+        }
+
+        static ViewModelMessage HandleHistory(ViewModelSend request)
+        {
+            if (request.Id == -1)
+            {
+                return new ViewModelMessage("message", "Сначала авторизуйтесь");
+            }
+
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+
+                    string query = @"
+                        SELECT command, ip_address, executed_at, execution_time_ms, status 
+                        FROM user_commands 
+                        WHERE user_id = @userId 
+                        ORDER BY executed_at DESC 
+                        LIMIT 20";
+
+                    MySqlCommand cmd = new MySqlCommand(query, conn);
+                    cmd.Parameters.AddWithValue("@userId", request.Id);
+
+                    List<string> history = new List<string>();
+
+                    using (MySqlDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string command = reader.GetString(0);
+                            string ip = reader.IsDBNull(1) ? "N/A" : reader.GetString(1);
+                            DateTime time = reader.GetDateTime(2);
+                            string execTime = reader.IsDBNull(3) ? "N/A" : reader.GetInt32(3) + "ms";
+                            string status = reader.IsDBNull(4) ? "N/A" : reader.GetString(4);
+
+                            history.Add($"[{time:dd.MM.yyyy HH:mm:ss}] {command} | IP: {ip} | {execTime} | {status}");
                         }
                     }
 
-                    currentUser.CurrentDirectory = newPath;
-                    db.SaveChanges();
-
-                    log.Success = true;
-                    log.Result = "OK";
-                    db.ActionLogs.Add(log);
-                    db.SaveChanges();
-
-                    return new ViewModelMessage("cd", JsonConvert.SerializeObject(GetDirectoryList(newPath)));
-
-                case "get":
-                    if (string.IsNullOrEmpty(argument))
+                    if (history.Count == 0)
                     {
-                        log.Result = "Укажите имя файла";
-                        db.ActionLogs.Add(log);
-                        db.SaveChanges();
-                        return new ViewModelMessage("message", log.Result);
+                        return new ViewModelMessage("message", "История пуста");
                     }
 
-                    string filePath = Path.Combine(currentDirectory, argument);
-                    if (!filePath.StartsWith(rootDirectory, StringComparison.OrdinalIgnoreCase))
-                    {
-                        log.Result = "Доступ запрещён";
-                        db.ActionLogs.Add(log);
-                        db.SaveChanges();
-                        return new ViewModelMessage("message", log.Result);
-                    }
-
-                    if (File.Exists(filePath))
-                    {
-                        byte[] fileBytes = File.ReadAllBytes(filePath);
-                        log.Success = true;
-                        log.Result = "OK";
-                        db.ActionLogs.Add(log);
-                        db.SaveChanges();
-                        return new ViewModelMessage("file", JsonConvert.SerializeObject(fileBytes));
-                    }
-                    else
-                    {
-                        log.Result = "Файл не найден";
-                        db.ActionLogs.Add(log);
-                        db.SaveChanges();
-                        return new ViewModelMessage("message", log.Result);
-                    }
-
-                default:
-                    log.Result = "Неизвестная команда";
-                    db.ActionLogs.Add(log);
-                    db.SaveChanges();
-                    return new ViewModelMessage("message", log.Result);
+                    return new ViewModelMessage("history", JsonConvert.SerializeObject(history));
+                }
+            }
+            catch (Exception ex)
+            {
+                return new ViewModelMessage("message", $"Ошибка: {ex.Message}");
             }
         }
 
-        private static bool TryParseFileUpload(string message, out FileInfoFTP fileInfo)
+        static string GetUserPath(int userId)
         {
-            fileInfo = null;
             try
             {
-                fileInfo = JsonConvert.DeserializeObject<FileInfoFTP>(message);
-                return fileInfo != null;
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    MySqlCommand cmd = new MySqlCommand("SELECT src FROM users WHERE id=@id", conn);
+                    cmd.Parameters.AddWithValue("@id", userId);
+                    return cmd.ExecuteScalar()?.ToString() ?? "";
+                }
             }
             catch
             {
-                return false;
+                return "";
             }
         }
 
-        private static List<string> GetDirectoryList(string path)
+        static void LogCommand(int userId, string command, string ipAddress, long executionTimeMs, string status, string resultMessage)
         {
-            var list = new List<string>();
             try
             {
-                foreach (string dir in Directory.GetDirectories(path))
-                    list.Add(Path.GetFileName(dir) + "/");
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
 
-                foreach (string file in Directory.GetFiles(path))
-                    list.Add(Path.GetFileName(file));
+                    string query = @"
+                        INSERT INTO user_commands 
+                        (user_id, command, ip_address, execution_time_ms, status, result_message) 
+                        VALUES 
+                        (@userId, @command, @ip, @execTime, @status, @result)";
+
+                    MySqlCommand cmd = new MySqlCommand(query, conn);
+                    cmd.Parameters.AddWithValue("@userId", userId);
+                    cmd.Parameters.AddWithValue("@command", command);
+                    cmd.Parameters.AddWithValue("@ip", ipAddress);
+                    cmd.Parameters.AddWithValue("@execTime", executionTimeMs);
+                    cmd.Parameters.AddWithValue("@status", status);
+                    cmd.Parameters.AddWithValue("@result", resultMessage.Length > 200 ? resultMessage.Substring(0, 200) : resultMessage);
+
+                    cmd.ExecuteNonQuery();
+                }
             }
             catch { }
-            return list;
         }
     }
 }
